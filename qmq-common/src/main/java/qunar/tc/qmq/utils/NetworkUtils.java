@@ -68,8 +68,9 @@ public class NetworkUtils {
                     if (ip.startsWith("127.0") || ip.startsWith("192.168")) {
                         continue;
                     }
-
-                    return ip;
+                    if (ip.startsWith("127.18")) {
+                        return ip;
+                    }
                 }
 
                 return ipv4Result.get(ipv4Result.size() - 1);

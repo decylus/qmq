@@ -83,12 +83,14 @@ class ConsumerAnnotationScanner implements BeanPostProcessor, ApplicationContext
             }
 
             String subject = resolve(annotation.subject());
+            String env = resolve("${qmq.env:default}");
 
             if (Strings.isNullOrEmpty(subject)) {
                 String err = String.format("使用@QmqConsumer,必须提供prefix, class:%s method:%s", beanName, methodName);
                 logger.error(err);
                 throw new RuntimeException(err);
             }
+            subject = subject + "-" + env;
             registeredMethods.add(method);
 
             String consumerGroup = annotation.isBroadcast() ? "" : resolve(annotation.consumerGroup());

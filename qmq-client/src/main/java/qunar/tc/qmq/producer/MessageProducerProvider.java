@@ -54,6 +54,7 @@ public class MessageProducerProvider implements MessageProducer {
 
     private String appCode;
     private String metaServer;
+    private String env;
 
     /**
      * 自动路由机房
@@ -75,11 +76,15 @@ public class MessageProducerProvider implements MessageProducer {
         if (STARTED.compareAndSet(false, true)) {
             routerManager.init(clientIdProvider.get());
         }
+        if (env == null){
+            env = "default";
+        }
     }
 
     @Override
     public Message generateMessage(String subject) {
-        BaseMessage msg = new BaseMessage(idGenerator.getNext(), subject);
+        String realSubject = subject + "-" + env;
+        BaseMessage msg = new BaseMessage(idGenerator.getNext(), realSubject);
         msg.setExpiredDelay(configs.getMinExpiredTime(), TimeUnit.MINUTES);
         msg.setProperty(BaseMessage.keys.qmq_appCode, appCode);
         return msg;
@@ -179,5 +184,9 @@ public class MessageProducerProvider implements MessageProducer {
      */
     public void setMetaServer(String metaServer) {
         this.metaServer = metaServer;
+    }
+
+    public void setEnv(String env){
+        this.env = env;
     }
 }

@@ -171,6 +171,7 @@ public class MetaInfoService implements MetaInfoClient.ResponseSubscriber, Runna
     }
 
     private MetaInfo parseResponse(MetaInfoResponse response) {
+        LOGGER.info("metaInfoResponse:{}", response);
         if (response == null) return null;
 
         String subject = response.getSubject();

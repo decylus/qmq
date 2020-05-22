@@ -57,6 +57,7 @@ class MetaInfoClientHandler extends SimpleChannelInboundHandler<Datagram> {
 
         if (response != null) {
             notifySubscriber(response);
+            LOG.info("channelRead0, metaInfoResponse:{}", response);
         } else {
             LOG.warn("request meta info UNKNOWN. code={}", msg.getHeader().getCode());
         }

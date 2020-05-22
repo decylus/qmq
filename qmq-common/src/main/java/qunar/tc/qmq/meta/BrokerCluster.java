@@ -36,4 +36,11 @@ public class BrokerCluster {
     public void setBrokerGroups(List<BrokerGroup> brokerGroups) {
         this.brokerGroups = brokerGroups;
     }
+
+    @Override
+    public String toString() {
+        return "BrokerCluster{" +
+                "brokerGroups=" + brokerGroups +
+                '}';
+    }
 }
