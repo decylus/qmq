@@ -83,4 +83,9 @@ public final class BrokerConfig {
             masterAddress = response.getMaster();
         }
     }
+
+    public void updateMaster(final String masterAddress) {
+        LOG.info("Broker master updated. meta: {}", masterAddress);
+        this.masterAddress = masterAddress;
+    }
 }

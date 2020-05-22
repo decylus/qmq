@@ -25,7 +25,9 @@ import org.slf4j.LoggerFactory;
 import qunar.tc.qmq.configuration.DynamicConfig;
 import qunar.tc.qmq.meta.*;
 import qunar.tc.qmq.meta.cache.CachedMetaInfoManager;
+import qunar.tc.qmq.meta.model.BrokerMeta;
 import qunar.tc.qmq.meta.monitor.QMon;
+import qunar.tc.qmq.meta.store.BrokerStore;
 import qunar.tc.qmq.meta.store.Store;
 import qunar.tc.qmq.netty.NettyRequestProcessor;
 import qunar.tc.qmq.protocol.CommandCode;
@@ -34,6 +36,7 @@ import qunar.tc.qmq.protocol.RemotingCommand;
 import qunar.tc.qmq.service.HeartbeatManager;
 import qunar.tc.qmq.util.RemotingBuilder;
 
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 
@@ -48,14 +51,16 @@ public class BrokerRegisterProcessor implements NettyRequestProcessor {
 
     private final DynamicConfig config;
     private final Store store;
+    private final BrokerStore brokerStore;
     private final CachedMetaInfoManager cachedMetaInfoManager;
     private final HeartbeatManager<String> heartbeatManager;
 
-    public BrokerRegisterProcessor(DynamicConfig config, CachedMetaInfoManager cachedMetaInfoManager, Store store) {
+    public BrokerRegisterProcessor(DynamicConfig config, CachedMetaInfoManager cachedMetaInfoManager, Store store, BrokerStore brokerStore) {
         this.store = store;
         this.config = config;
         this.cachedMetaInfoManager = cachedMetaInfoManager;
         this.heartbeatManager = new HeartbeatManager<>();
+        this.brokerStore = brokerStore;
     }
 
     @Override
@@ -71,13 +76,19 @@ public class BrokerRegisterProcessor implements NettyRequestProcessor {
         LOG.info("broker register request received. request: {}", brokerRequest);
 
         if (brokerRole == BrokerRole.SLAVE.getCode() || brokerRole == BrokerRole.DELAY_SLAVE.getCode()) {
-            return CompletableFuture.completedFuture(handleSlave(request));
+            return CompletableFuture.completedFuture(handleSlave(request, brokerRequest));
         }
 
         return CompletableFuture.completedFuture(handleMaster(request, brokerRequest));
     }
 
-    private Datagram handleSlave(final Datagram request) {
+    private Datagram handleSlave(final Datagram request, final BrokerRegisterRequest brokerRequest) {
+        final int requestType = brokerRequest.getRequestType();
+        if (requestType == BrokerRequestType.HEARTBEAT.getCode()) {
+            return handleSlaveHeartbeat(request, brokerRequest);
+        } else if (requestType == BrokerRequestType.ONLINE.getCode()) {
+            handleIPChange(brokerRequest);
+        }
         return RemotingBuilder.buildEmptyResponseDatagram(CommandCode.SUCCESS, request.getHeader());
     }
 
@@ -102,15 +113,47 @@ public class BrokerRegisterProcessor implements NettyRequestProcessor {
         refreshHeartbeat(groupName);
 
         final BrokerGroup brokerGroupInCache = cachedMetaInfoManager.getBrokerGroup(groupName);
+        String groupMaster = "";
         if (brokerGroupInCache == null || brokerState != brokerGroupInCache.getBrokerState().getCode()) {
             final BrokerGroup groupInStore = store.getBrokerGroup(groupName);
             if (groupInStore != null && groupInStore.getBrokerState().getCode() != brokerState) {
                 store.updateBrokerGroup(groupName, BrokerState.codeOf(brokerState));
+                groupMaster = groupInStore.getMaster();
             }
+        } else {
+            groupMaster = brokerGroupInCache.getMaster();
         }
 
         LOG.info("Broker heartbeat response, request:{}", brokerRequest);
-        return RemotingBuilder.buildEmptyResponseDatagram(CommandCode.SUCCESS, request.getHeader());
+        BrokerHeartBeatResponse resp = new BrokerHeartBeatResponse();
+        resp.setMasterAddress(groupMaster);
+        return RemotingBuilder.buildResponseDatagram(CommandCode.SUCCESS, request.getHeader(), out -> {
+            BrokerHeartBeatResponseSerializer.serialize(resp, out);
+        });
+    }
+
+    private Datagram handleSlaveHeartbeat(final Datagram request, final BrokerRegisterRequest brokerRequest) {
+        final String groupName = brokerRequest.getGroupName();
+        final int brokerState = brokerRequest.getBrokerState();
+
+        LOG.info("Broker heartbeat response, request:{}", brokerRequest);
+        Optional<BrokerMeta> brokerMetaOptional;
+        if (brokerRequest.getBrokerRole() == BrokerRole.SLAVE.getCode()){
+            brokerMetaOptional = brokerStore.queryByRole(groupName, BrokerRole.MASTER.getCode());
+        } else if (brokerRequest.getBrokerRole() == BrokerRole.DELAY_SLAVE.getCode()){
+            brokerMetaOptional = brokerStore.queryByRole(groupName, BrokerRole.DELAY_MASTER.getCode());
+        } else {
+            throw new RuntimeException("not a slave!" + brokerRequest.toString());
+        }
+
+        BrokerMeta brokerMeta = brokerMetaOptional.orElseThrow(() -> new RuntimeException("broker not existed"));
+
+        BrokerHeartBeatResponse resp = new BrokerHeartBeatResponse();
+        resp.setMasterAddress(brokerMeta.getIp() + ":" + brokerMeta.getSyncPort());
+        LOG.info("心跳处理结束, meta:{}", brokerMeta);
+        return RemotingBuilder.buildResponseDatagram(CommandCode.SUCCESS, request.getHeader(), out -> {
+            BrokerHeartBeatResponseSerializer.serialize(resp, out);
+        });
     }
 
     private Datagram handleOnline(final Datagram request, final BrokerRegisterRequest brokerRequest) {
@@ -121,9 +164,21 @@ public class BrokerRegisterProcessor implements NettyRequestProcessor {
         refreshHeartbeat(groupName);
 
         store.insertOrUpdateBrokerGroup(groupName, kind, brokerAddress, BrokerState.RW);
+        handleIPChange(brokerRequest);
+
         cachedMetaInfoManager.executeRefreshTask();
         LOG.info("Broker online success, request:{}", brokerRequest);
         return RemotingBuilder.buildEmptyResponseDatagram(CommandCode.SUCCESS, request.getHeader());
+    }
+
+    private void handleIPChange(final BrokerRegisterRequest brokerRequest){
+        final String groupName = brokerRequest.getGroupName();
+        final String brokerAddress = brokerRequest.getBrokerAddress();
+        Optional<BrokerMeta> optionalBrokerMeta = brokerStore.queryByRole(groupName, brokerRequest.getBrokerRole());
+        BrokerMeta brokerMeta = optionalBrokerMeta.orElseThrow(() -> new RuntimeException("unsupported request type "));
+        BrokerMeta newBrokerMeta = new BrokerMeta(brokerMeta.getGroup(), brokerMeta.getRole(),
+                brokerMeta.getHostname(), brokerAddress.substring(0, brokerAddress.indexOf(':')), brokerMeta.getServePort(), brokerMeta.getSyncPort());
+        brokerStore.replaceBrokerByRole(brokerMeta, newBrokerMeta);
     }
 
     private Datagram handleOffline(final Datagram request, final BrokerRegisterRequest brokerRequest) {

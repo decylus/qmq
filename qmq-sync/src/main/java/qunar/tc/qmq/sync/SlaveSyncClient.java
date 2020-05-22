@@ -44,10 +44,14 @@ public class SlaveSyncClient {
         config.addListener(conf -> timeout = conf.getLong("slave.sync.timeout", 3000L));
     }
 
+    public String getMasterAddress(){
+        return BrokerConfig.getMasterAddress();
+    }
+
     public Datagram syncCheckpoint() {
         final Datagram datagram = RemotingBuilder.buildRequestDatagram(CommandCode.SYNC_CHECKPOINT_REQUEST, null);
         try {
-            return client.sendSync(master, datagram, timeout);
+            return client.sendSync(getMasterAddress(), datagram, timeout);
         } catch (Throwable e) {
             throw new RuntimeException(String.format("sync checkpoint failed. master: %s, timeout: %d", master, timeout), e);
         }
@@ -56,7 +60,7 @@ public class SlaveSyncClient {
     public Datagram syncLog(final SyncRequest request) {
         final Datagram datagram = newSyncLogRequest(request);
         try {
-            return client.sendSync(master, datagram, timeout);
+            return client.sendSync(getMasterAddress(), datagram, timeout);
         } catch (Throwable e) {
             throw new RuntimeException(String.format("sync log failed. master: %s, timeout: %d", master, timeout), e);
         }

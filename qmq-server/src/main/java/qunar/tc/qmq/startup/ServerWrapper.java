@@ -230,6 +230,7 @@ public class ServerWrapper implements Disposable {
     }
 
     private void online() {
+        LOG.info("Start to online");
         BrokerConfig.markAsWritable();
         brokerRegisterService.healthSwitch(true);
         subscriberStatusChecker.brokerStatusChanged(true);

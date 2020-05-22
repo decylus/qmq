@@ -17,6 +17,7 @@
 package qunar.tc.qmq.meta;
 
 import com.google.common.base.Optional;
+import com.google.common.base.Strings;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qunar.tc.qmq.common.Disposable;
@@ -89,6 +90,15 @@ public class BrokerRegisterService implements Disposable {
         Datagram datagram = null;
         try {
             datagram = client.sendSync(endpoint, buildRegisterDatagram(BrokerRequestType.HEARTBEAT), TIMEOUT_MS);
+            BrokerHeartBeatResponse response = BrokerHeartBeatResponseSerializer.deSerialize(datagram.getBody());
+            String newMasterAddress = response.getMasterAddress();
+            if (Strings.isNullOrEmpty(newMasterAddress)){
+                LOG.info("master address is null!" + endpoint);
+            }
+            if (isSlave() && !Strings.isNullOrEmpty(newMasterAddress)){
+                BrokerConfig.getInstance().updateMaster(newMasterAddress);
+                LOG.info("Broker master address updated!");
+            }
         } catch (Exception e) {
             LOG.error("Send HEARTBEAT message to meta server failed", e);
             repickEndpoint();
@@ -97,6 +107,11 @@ public class BrokerRegisterService implements Disposable {
                 datagram.release();
             }
         }
+    }
+
+    private boolean isSlave() {
+        return BrokerConfig.getBrokerRole() == BrokerRole.SLAVE
+                || BrokerConfig.getBrokerRole() == BrokerRole.DELAY_SLAVE;
     }
 
     public void healthSwitch(final Boolean online) {
@@ -112,6 +127,7 @@ public class BrokerRegisterService implements Disposable {
         try {
             brokerState = BrokerState.RW.getCode();
             datagram = client.sendSync(endpoint, buildRegisterDatagram(BrokerRequestType.ONLINE), TIMEOUT_MS);
+            LOG.info("Sended ONLINE message to meta server.");
         } catch (Exception e) {
             LOG.error("Send ONLINE message to meta server failed", e);
             repickEndpoint();
@@ -167,6 +183,7 @@ public class BrokerRegisterService implements Disposable {
         datagram.setHeader(header);
         datagram.setPayloadHolder(out -> {
             final BrokerRegisterRequest request = buildRegisterRequest(checkType);
+            LOG.info("Send RegisterRequest, request:{}", request);
             BrokerRegisterRequestSerializer.serialize(request, out);
         });
         return datagram;

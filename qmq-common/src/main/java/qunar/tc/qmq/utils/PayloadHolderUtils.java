@@ -17,6 +17,7 @@
 package qunar.tc.qmq.utils;
 
 import io.netty.buffer.ByteBuf;
+import io.netty.buffer.EmptyByteBuf;
 
 import java.nio.ByteBuffer;
 import java.util.HashMap;
@@ -34,6 +35,9 @@ public final class PayloadHolderUtils {
     }
 
     public static String readString(ByteBuf in) {
+        if (in instanceof EmptyByteBuf){
+            return "";
+        }
         int len = in.readShort();
         byte[] bs = new byte[len];
         in.readBytes(bs);

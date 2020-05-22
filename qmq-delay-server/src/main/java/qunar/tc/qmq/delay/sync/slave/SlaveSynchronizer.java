@@ -21,6 +21,7 @@ import io.netty.buffer.ByteBuf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import qunar.tc.qmq.common.Disposable;
+import qunar.tc.qmq.configuration.BrokerConfig;
 import qunar.tc.qmq.configuration.DynamicConfig;
 import qunar.tc.qmq.configuration.DynamicConfigLoader;
 import qunar.tc.qmq.delay.DelayLogFacade;
@@ -87,6 +88,10 @@ public class SlaveSynchronizer implements Disposable {
         slaveSyncTasks.forEach((syncType, slaveSyncTask) -> slaveSyncTask.shutdown());
     }
 
+    public String getMasterAddress(){
+        return BrokerConfig.getMasterAddress();
+    }
+
     private class SlaveSyncTask implements Runnable {
         private final SyncLogProcessor<DelaySyncRequest> processor;
         private final String processorName;
@@ -132,7 +137,7 @@ public class SlaveSynchronizer implements Disposable {
         private void syncFromMaster(Datagram request) throws InterruptedException, RemoteTimeoutException, ClientSendException {
             Datagram response = null;
             try {
-                response = slaveSyncSender.send(masterAddress, request);
+                response = slaveSyncSender.send(getMasterAddress(), request);
                 processor.process(response);
             } finally {
                 if (response != null) {
