@@ -7,7 +7,7 @@
     <parent>
         <groupId>qunar.tc</groupId>
         <artifactId>qmq</artifactId>
-        <version>4.0.30</version>
+        <version>4.0.30.tm</version>
     </parent>
 
     <artifactId>qmq-delay-server</artifactId>
