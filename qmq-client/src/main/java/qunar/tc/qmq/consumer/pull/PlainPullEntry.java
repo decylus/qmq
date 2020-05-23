@@ -1,5 +1,5 @@
 /*
- * Copyright 2018 Qunar
+ * Copyright 2018 Qunar, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -11,7 +11,7 @@
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the License for the specific language governing permissions and
- * limitations under the License.com.qunar.pay.trade.api.card.service.usercard.UserCardQueryFacade
+ * limitations under the License.
  */
 
 package qunar.tc.qmq.consumer.pull;
@@ -21,6 +21,7 @@ import qunar.tc.qmq.broker.BrokerClusterInfo;
 import qunar.tc.qmq.broker.BrokerGroupInfo;
 import qunar.tc.qmq.broker.BrokerService;
 import qunar.tc.qmq.common.ClientType;
+import qunar.tc.qmq.common.StatusSource;
 
 import java.util.List;
 
@@ -40,16 +41,50 @@ class PlainPullEntry extends AbstractPullEntry {
 
     PlainPullResult pull(final int fetchSize, final int pullTimeout, final List<Message> output) {
         if (!pullStrategy.needPull()) return PlainPullResult.NOMORE_MESSAGE;
-        BrokerClusterInfo brokerCluster = brokerService.getClusterBySubject(ClientType.CONSUMER, consumeParam.getSubject(), consumeParam.getGroup());
+        BrokerClusterInfo brokerCluster = brokerService
+                .getClusterBySubject(ClientType.CONSUMER, consumeParam.getSubject(), consumeParam.getGroup());
         List<BrokerGroupInfo> groups = brokerCluster.getGroups();
         if (groups.isEmpty()) {
             return PlainPullResult.NO_BROKER;
         }
-        BrokerGroupInfo group = loadBalance.select(brokerCluster);
-        List<PulledMessage> received = pull(consumeParam, group, fetchSize, pullTimeout, null);
+        BrokerGroupInfo brokerGroup = loadBalance.select(brokerCluster);
+        if (brokerGroup == null || !brokerGroup.isAvailable()) {
+            return PlainPullResult.NO_BROKER;
+        }
+        List<PulledMessage> received = pull(consumeParam, brokerGroup, fetchSize, pullTimeout, null);
         output.addAll(received);
         pullStrategy.record(received.size() > 0);
         return PlainPullResult.NOMORE_MESSAGE;
+    }
+
+    @Override
+    public String getSubject() {
+        return consumeParam.getSubject();
+    }
+
+    @Override
+    public String getConsumerGroup() {
+        return consumeParam.getGroup();
+    }
+
+    @Override
+    public void online(StatusSource src) {
+
+    }
+
+    @Override
+    public void offline(StatusSource src) {
+
+    }
+
+    @Override
+    public void startPull() {
+
+    }
+
+    @Override
+    public void destroy() {
+
     }
 
     enum PlainPullResult {
