@@ -354,6 +354,7 @@ public final class QMon {
     }
 
     public static void replayLag(String name, Supplier<Double> supplier) {
+        name = name.replace("-", "_");
         Metrics.gauge(name, NONE, NONE, supplier);
     }
 
