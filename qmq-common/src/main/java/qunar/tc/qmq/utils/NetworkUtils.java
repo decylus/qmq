@@ -67,7 +67,7 @@ public class NetworkUtils {
                     if (ip.startsWith("127.0")) {
                         continue;
                     }
-                    if (ip.startsWith("127.18")) {
+                    if (ip.startsWith("172.16")) {
                         return ip;
                     }
                 }
